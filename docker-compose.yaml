@@ -1,0 +1,72 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: elemental-duel-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  battle-api:
+    build:
+      context: ./battle-api-go
+    container_name: elemental-duel-battle-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DB_RETRY_COUNT: ${DB_RETRY_COUNT}
+    ports:
+      - "${BATTLE_API_PORT}:8080"
+
+  analytics-api:
+    build:
+      context: ./analytics-api-py
+    container_name: elemental-duel-analytics-api
+    restart: unless-stopped
+    depends_on:
+      - battle-api
+    environment:
+      PORT: "5001"
+      BATTLE_API_URL: ${BATTLE_API_URL}
+      ANALYTICS_DB_PATH: /data/analytics.db
+    ports:
+      - "${ANALYTICS_API_PORT}:5001"
+    volumes:
+      - analytics-data:/data
+
+  frontend:
+    build:
+      context: ./frontend-py
+    container_name: elemental-duel-frontend
+    restart: unless-stopped
+    depends_on:
+      - battle-api
+      - analytics-api
+    environment:
+      PORT: "5000"
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
+      BATTLE_API_URL: ${BATTLE_API_URL}
+      ANALYTICS_API_URL: ${ANALYTICS_API_URL}
+    ports:
+      - "${FRONTEND_PORT}:5000"
+
+volumes:
+  mysql-data:
+  analytics-data:

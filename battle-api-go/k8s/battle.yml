@@ -1,0 +1,208 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: battle-config
+  namespace: elemental-duel
+data:
+  PORT: "8080"
+  MYSQL_HOST: "battle-mysql"
+  MYSQL_PORT: "3306"
+  MYSQL_DATABASE: "elemental_duel"
+  MYSQL_USER: "elemental"
+  DB_RETRY_COUNT: "10"
+  BACKUP_TARGET: "render-placeholder-storage"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: battle-secret
+  namespace: elemental-duel
+type: Opaque
+stringData:
+  MYSQL_PASSWORD: elementalpass
+  MYSQL_ROOT_PASSWORD: rootpass123
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: battle-mysql-pvc
+  namespace: elemental-duel
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: battle-mysql
+  namespace: elemental-duel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: battle-mysql
+  template:
+    metadata:
+      labels:
+        app: battle-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: battle-secret
+                  key: MYSQL_PASSWORD
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: battle-secret
+                  key: MYSQL_ROOT_PASSWORD
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: battle-mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: battle-mysql
+  namespace: elemental-duel
+spec:
+  selector:
+    app: battle-mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: battle-api
+  namespace: elemental-duel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: battle-api
+  template:
+    metadata:
+      labels:
+        app: battle-api
+    spec:
+      containers:
+        - name: battle-api
+          image: ghcr.io/your-org/elemental-duel-battle:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: PORT
+            - name: MYSQL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: MYSQL_HOST
+            - name: MYSQL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: MYSQL_PORT
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: battle-config
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: battle-secret
+                  key: MYSQL_PASSWORD
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: battle-api
+  namespace: elemental-duel
+spec:
+  selector:
+    app: battle-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: battle-mysql-backup
+  namespace: elemental-duel
+spec:
+  schedule: "0 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: battle-backup
+              image: mysql:8.4
+              command: ["/bin/sh", "-c"]
+              args:
+                - >
+                  mysqldump -h battle-mysql -u$MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE > /backup/battle-$(date +%F-%H%M%S).sql;
+                  echo "Backup prepared for $BACKUP_TARGET";
+              env:
+                - name: MYSQL_DATABASE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: battle-config
+                      key: MYSQL_DATABASE
+                - name: MYSQL_USER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: battle-config
+                      key: MYSQL_USER
+                - name: MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: battle-secret
+                      key: MYSQL_PASSWORD
+                - name: BACKUP_TARGET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: battle-config
+                      key: BACKUP_TARGET
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /backup
+          volumes:
+            - name: backup-volume
+              emptyDir: {}

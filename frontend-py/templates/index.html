@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="p-4 mb-4 bg-secondary-subtle text-dark rounded-3">
+  <h1 class="display-6 fw-bold">Cloud-native game scaffold</h1>
+  <p class="mb-2">This baseline prepares the monorepo, APIs, containers, CI/CD and Kubernetes resources for Elemental Duel.</p>
+  <p class="mb-0">Game rules are intentionally not implemented yet.</p>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100 bg-black text-light border-secondary">
+      <div class="card-body">
+        <h2 class="h5">Prepare a sample round</h2>
+        <form method="post" action="/play">
+          <div class="mb-3">
+            <label for="element" class="form-label">Choose your element</label>
+            <select class="form-select" name="element" id="element">
+              {% for element in elements %}
+                <option value="{{ element }}">{{ element }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">Send placeholder battle request</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card h-100 bg-black text-light border-secondary">
+      <div class="card-body">
+        <h2 class="h5">Analytics snapshot</h2>
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item bg-black text-light">Total rounds: {{ analytics.total_rounds }}</li>
+          <li class="list-group-item bg-black text-light">Battle source: {{ analytics.source_status }}</li>
+          <li class="list-group-item bg-black text-light">Generated: {{ analytics.generated_at }}</li>
+          <li class="list-group-item bg-black text-light">Notes: {{ analytics.notes }}</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card bg-black text-light border-secondary">
+  <div class="card-body">
+    <h2 class="h5">Service overview</h2>
+    <div class="table-responsive">
+      <table class="table table-dark table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Status</th>
+            <th>URL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for service in services %}
+          <tr>
+            <td>{{ service.name }}</td>
+            <td>{{ service.status }}</td>
+            <td>{{ service.url }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

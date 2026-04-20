@@ -1,0 +1,163 @@
+name: Elemental Duel CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      battle: ${{ steps.filter.outputs.battle }}
+      analytics: ${{ steps.filter.outputs.analytics }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - '.github/workflows/**'
+              - 'docker-compose.yaml'
+              - '.env.example'
+              - 'README.md'
+              - 'k8s/**'
+            battle:
+              - 'battle-api-go/**'
+            analytics:
+              - 'analytics-api-py/**'
+            frontend:
+              - 'frontend-py/**'
+
+  battle-api:
+    needs: changes
+    if: needs.changes.outputs.battle == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass123
+          MYSQL_DATABASE: elemental_duel
+          MYSQL_USER: elemental
+          MYSQL_PASSWORD: elementalpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -prootpass123"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Run Go unit tests
+        working-directory: battle-api-go
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_DATABASE: elemental_duel
+          MYSQL_USER: elemental
+          MYSQL_PASSWORD: elementalpass
+        run: go test ./...
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and optionally push battle image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./battle-api-go
+          push: ${{ github.event_name == 'push' }}
+          tags: ghcr.io/${{ github.repository_owner }}/elemental-duel-battle:latest
+
+  analytics-api:
+    needs: changes
+    if: needs.changes.outputs.analytics == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies and run pytest
+        working-directory: analytics-api-py
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pytest
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and optionally push analytics image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./analytics-api-py
+          push: ${{ github.event_name == 'push' }}
+          tags: ghcr.io/${{ github.repository_owner }}/elemental-duel-analytics:latest
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies and run smoke tests
+        working-directory: frontend-py
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+          pytest
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and optionally push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend-py
+          push: ${{ github.event_name == 'push' }}
+          tags: ghcr.io/${{ github.repository_owner }}/elemental-duel-frontend:latest
+
+  compose-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare environment
+        run: cp .env.example .env
+      - name: Build and start stack
+        run: docker compose up --build -d
+      - name: Verify services
+        run: |
+          sleep 25
+          curl --fail http://localhost:8088/health
+          curl --fail http://localhost:5002/health
+          curl --fail http://localhost:5050/
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

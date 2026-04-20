@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-config
+  namespace: elemental-duel
+data:
+  PORT: "5001"
+  BATTLE_API_URL: "http://battle-api:8080"
+  ANALYTICS_DB_PATH: "/data/analytics.db"
+  BACKUP_TARGET: "render-placeholder-storage"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: analytics-data-pvc
+  namespace: elemental-duel
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-api
+  namespace: elemental-duel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics-api
+  template:
+    metadata:
+      labels:
+        app: analytics-api
+    spec:
+      containers:
+        - name: analytics-api
+          image: ghcr.io/your-org/elemental-duel-analytics:latest
+          ports:
+            - containerPort: 5001
+          envFrom:
+            - configMapRef:
+                name: analytics-config
+          volumeMounts:
+            - name: analytics-data
+              mountPath: /data
+      volumes:
+        - name: analytics-data
+          persistentVolumeClaim:
+            claimName: analytics-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-api
+  namespace: elemental-duel
+spec:
+  selector:
+    app: analytics-api
+  ports:
+    - port: 5001
+      targetPort: 5001
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-backup
+  namespace: elemental-duel
+spec:
+  schedule: "30 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: analytics-backup
+              image: alpine:3.20
+              command: ["/bin/sh", "-c"]
+              args:
+                - >
+                  cp /data/analytics.db /backup/analytics-$(date +%F-%H%M%S).db || true;
+                  echo "Backup prepared for $BACKUP_TARGET";
+              envFrom:
+                - configMapRef:
+                    name: analytics-config
+              volumeMounts:
+                - name: analytics-data
+                  mountPath: /data
+                - name: backup-volume
+                  mountPath: /backup
+          volumes:
+            - name: analytics-data
+              persistentVolumeClaim:
+                claimName: analytics-data-pvc
+            - name: backup-volume
+              emptyDir: {}
