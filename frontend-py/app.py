@@ -3,7 +3,6 @@ import os
 import requests
 from flask import Flask, flash, redirect, render_template, request, url_for
 
-
 ELEMENTS = ["Fire", "Water", "Earth", "Air", "Lightning"]
 
 

@@ -1,11 +1,11 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 import requests
 from flask import Flask
 from flask_restx import Api, Namespace, Resource
 from flask_sqlalchemy import SQLAlchemy
-
 
 db = SQLAlchemy()
 
@@ -32,10 +32,17 @@ def read_battle_stats():
 
 
 def create_app(test_config=None):
-    app = Flask(__name__)
+    app = Flask(__name__, instance_relative_config=True)
 
     config = test_config or {}
-    database_uri = config.get("DATABASE_URI") or f"sqlite:///{os.getenv('ANALYTICS_DB_PATH', '/data/analytics.db')}"
+    database_uri = config.get("DATABASE_URI")
+
+    if not database_uri:
+        default_db_path = Path(os.getenv("ANALYTICS_DB_PATH", app.instance_path))
+        if default_db_path.suffix != ".db":
+            default_db_path = default_db_path / "analytics.db"
+        default_db_path.parent.mkdir(parents=True, exist_ok=True)
+        database_uri = f"sqlite:///{default_db_path}"
 
     app.config.update(
         TESTING=config.get("TESTING", False),
