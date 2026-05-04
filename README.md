@@ -1,5 +1,7 @@
 # Elemental Duel
 
+**Repository:** https://github.com/christojor/elemental-duel
+
 A cloud-native microservices game platform built for the Cloud Native Computing course (Inlämningsuppgift 2). Players choose one of five elements and duel against the computer. Every round is persisted, and game statistics are tracked through a dedicated analytics service.
 
 ---
@@ -29,25 +31,19 @@ A cloud-native microservices game platform built for the Cloud Native Computing 
 
 ---
 
-## VG Requirements Coverage
-
-| Requirement | Implementation |
-|---|---|
-| CI with compile, unit tests, container build & push | GitHub Actions (`.github/workflows/CI.yml`) — per-service jobs, pushes to both GHCR and Docker Hub |
-| Go web service with database | Battle API (`battle-api-go/`) — Go + Gin + GORM + MySQL |
-| Kubernetes deployment (manual `kubectl`) | All manifests in `*/k8s/` and `k8s/` |
-| Additional CRUD API in the other language | Analytics API (`analytics-api-py/`) — Python + Flask-RESTX + SQLite, full CRUD |
-| Browsable API documentation | Swagger UI at `http://localhost:5001/docs` |
-| Frontend | Flask frontend consuming both APIs |
-| Database backup → S3 | CronJobs in `battle-api-go/k8s/battle.yml` and `analytics-api-py/k8s/analytics.yml` — `aws s3 cp` to configurable S3 bucket |
-
----
-
 ## Game Logic
 
 Five elements: **fire**, **water**, **earth**, **air**, **lightning**.
 
 Each element beats two others and loses to two others. Every round resolves to `win`, `lose`, or `draw`, is persisted to MySQL by the Battle API, and can be aggregated into snapshots by the Analytics API.
+
+| Element | Beats | Loses to |
+|---|---|---|
+| fire | air, earth | water, lightning |
+| water | fire, lightning | earth, air |
+| earth | water, lightning | fire, air |
+| air | water, earth | fire, lightning |
+| lightning | fire, air | water, earth |
 
 ---
 
@@ -182,10 +178,12 @@ Run unit tests locally:
 # Go
 cd battle-api-go && go test ./...
 
-# Python (activate venv first)
+# Python (activate venv first — run per service to avoid module name conflicts)
 cd analytics-api-py && pytest
 cd frontend-py && pytest
 ```
+
+> Run each Python service from its own directory. Running both test suites together from the repo root causes an `app` module name collision.
 
 The full integration + E2E suite runs automatically in CI via Docker Compose.
 
