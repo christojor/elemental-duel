@@ -32,6 +32,8 @@ jobs:
               - 'docker-compose.yaml'
               - '.env.example'
               - 'README.md'
+              - 'tests/**'
+              - 'package.json'
               - 'k8s/**'
             battle:
               - 'battle-api-go/**'
@@ -86,12 +88,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and optionally push battle image
         uses: docker/build-push-action@v6
         with:
           context: ./battle-api-go
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository_owner }}/elemental-duel-battle:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/elemental-duel-battle:latest
+            ghcr.io/${{ github.repository_owner }}/elemental-duel-battle:${{ github.sha }}
+            docker.io/protodoc/elemental-duel:battle-latest
+            docker.io/protodoc/elemental-duel:battle-${{ github.sha }}
 
   analytics-api:
     needs: changes
@@ -102,7 +115,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install dependencies and run lint and tests
+      - name: Install dependencies and run lint and unit tests
         working-directory: analytics-api-py
         env:
           PYTHONPATH: .
@@ -110,7 +123,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt ruff
           ruff check .
-          python -m pytest
+          python -m pytest tests/test_app.py -v
       - name: Log in to GHCR
         if: github.event_name == 'push'
         uses: docker/login-action@v3
@@ -118,12 +131,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and optionally push analytics image
         uses: docker/build-push-action@v6
         with:
           context: ./analytics-api-py
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository_owner }}/elemental-duel-analytics:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/elemental-duel-analytics:latest
+            ghcr.io/${{ github.repository_owner }}/elemental-duel-analytics:${{ github.sha }}
+            docker.io/protodoc/elemental-duel:analytics-latest
+            docker.io/protodoc/elemental-duel:analytics-${{ github.sha }}
 
   frontend:
     needs: changes
@@ -150,19 +174,45 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and optionally push frontend image
         uses: docker/build-push-action@v6
         with:
           context: ./frontend-py
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository_owner }}/elemental-duel-frontend:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/elemental-duel-frontend:latest
+            ghcr.io/${{ github.repository_owner }}/elemental-duel-frontend:${{ github.sha }}
+            docker.io/protodoc/elemental-duel:frontend-latest
+            docker.io/protodoc/elemental-duel:frontend-${{ github.sha }}
 
-  compose-smoke-test:
+  full-suite:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Prepare environment
         run: cp .env.example .env
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Python integration test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests
+      - name: Install Newman and Playwright dependencies
+        run: |
+          npm install
+          npm install -g newman
+          npx playwright install --with-deps chromium
       - name: Build and start stack
         run: docker compose up --build -d
       - name: Verify services
@@ -176,6 +226,12 @@ jobs:
             done
             curl --fail "$url"
           done
+      - name: Run integration tests
+        run: python -m pytest tests/integration -v
+      - name: Run API tests with Newman
+        run: newman run tests/postman/Elemental-Duel.postman_collection.json
+      - name: Run Playwright E2E tests
+        run: npm run test:e2e
       - name: Stop stack
         if: always()
         run: docker compose down -v

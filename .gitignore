@@ -134,3 +134,10 @@ charts/**/secrets*.yml
 tmp/
 temp/
 *.tmp
+
+# -----------------------------
+# Node / Playwright
+# -----------------------------
+node_modules/
+playwright-report/
+test-results/

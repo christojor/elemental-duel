@@ -1,0 +1,112 @@
+{
+  "info": {
+    "name": "Elemental Duel API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Battle Health",
+      "request": {
+        "method": "GET",
+        "url": "{{battleUrl}}/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const body = pm.response.json();",
+              "pm.expect(body.status).to.eql('ok');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Round",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"player_choice\": \"fire\",\n  \"computer_choice\": \"air\"\n}"
+        },
+        "url": "{{battleUrl}}/api/v1/rounds"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "pm.expect(body.round.result).to.eql('win');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Battle Stats",
+      "request": {
+        "method": "GET",
+        "url": "{{battleUrl}}/api/v1/stats"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const body = pm.response.json();",
+              "pm.expect(body).to.have.property('total_rounds');",
+              "pm.expect(body).to.have.property('wins');",
+              "pm.expect(body).to.have.property('win_rate');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics Summary",
+      "request": {
+        "method": "GET",
+        "url": "{{analyticsUrl}}/api/v1/analytics/summary"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const body = pm.response.json();",
+              "pm.expect(body).to.have.property('wins');",
+              "pm.expect(body).to.have.property('losses');",
+              "pm.expect(body).to.have.property('draws');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "battleUrl",
+      "value": "http://localhost:8088"
+    },
+    {
+      "key": "analyticsUrl",
+      "value": "http://localhost:5002"
+    }
+  ]
+}

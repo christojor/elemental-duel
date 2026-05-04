@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -35,6 +38,74 @@ type AppConfig struct {
 	DBPort     string
 	DBName     string
 	RetryCount int
+}
+
+var validChoices = map[string]bool{
+	"fire":      true,
+	"water":     true,
+	"earth":     true,
+	"air":       true,
+	"lightning": true,
+}
+
+var beats = map[string]map[string]bool{
+	"fire": {
+		"air":   true,
+		"earth": true,
+	},
+	"water": {
+		"fire":      true,
+		"lightning": true,
+	},
+	"earth": {
+		"water":     true,
+		"lightning": true,
+	},
+	"air": {
+		"water": true,
+		"earth": true,
+	},
+	"lightning": {
+		"fire": true,
+		"air":  true,
+	},
+}
+
+var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+var rngMu sync.Mutex
+
+func normalizeChoice(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func randomChoice() string {
+	choices := []string{"fire", "water", "earth", "air", "lightning"}
+	rngMu.Lock()
+	defer rngMu.Unlock()
+	return choices[rng.Intn(len(choices))]
+}
+
+func determineResult(playerChoice string, computerChoice string) (string, error) {
+	player := normalizeChoice(playerChoice)
+	computer := normalizeChoice(computerChoice)
+
+	if !validChoices[player] {
+		return "", fmt.Errorf("invalid player_choice: %s", playerChoice)
+	}
+
+	if !validChoices[computer] {
+		return "", fmt.Errorf("invalid computer_choice: %s", computerChoice)
+	}
+
+	if player == computer {
+		return "draw", nil
+	}
+
+	if beats[player][computer] {
+		return "win", nil
+	}
+
+	return "lose", nil
 }
 
 func getEnv(key string, fallback string) string {
@@ -118,14 +189,27 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 				return
 			}
 
+			req.PlayerChoice = normalizeChoice(req.PlayerChoice)
+			if !validChoices[req.PlayerChoice] {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "player_choice must be one of: fire, water, earth, air, lightning"})
+				return
+			}
+
+			req.ComputerChoice = normalizeChoice(req.ComputerChoice)
 			if req.ComputerChoice == "" {
-				req.ComputerChoice = "pending-ai"
+				req.ComputerChoice = randomChoice()
+			}
+
+			result, err := determineResult(req.PlayerChoice, req.ComputerChoice)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "computer_choice must be one of: fire, water, earth, air, lightning"})
+				return
 			}
 
 			round := Round{
 				PlayerChoice:   req.PlayerChoice,
 				ComputerChoice: req.ComputerChoice,
-				Result:         "not-implemented",
+				Result:         result,
 			}
 
 			if db != nil {
@@ -136,22 +220,35 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			}
 
 			c.JSON(http.StatusCreated, gin.H{
-				"message": "Battle scaffold ready. Game logic will be added later.",
+				"message": "Round resolved successfully.",
 				"round":   round,
 			})
 		})
 
 		api.GET("/stats", func(c *gin.Context) {
 			var totalRounds int64
+			var totalWins int64
+			var totalLosses int64
+			var totalDraws int64
 			if db != nil {
 				_ = db.Model(&Round{}).Count(&totalRounds).Error
+				_ = db.Model(&Round{}).Where("result = ?", "win").Count(&totalWins).Error
+				_ = db.Model(&Round{}).Where("result = ?", "lose").Count(&totalLosses).Error
+				_ = db.Model(&Round{}).Where("result = ?", "draw").Count(&totalDraws).Error
+			}
+
+			winRate := 0.0
+			if totalRounds > 0 {
+				winRate = float64(totalWins) / float64(totalRounds) * 100
 			}
 
 			c.JSON(http.StatusOK, gin.H{
 				"service":      "battle-api-go",
 				"total_rounds": totalRounds,
-				"win_rate":     0,
-				"notes":        "Scaffold mode: no duel logic implemented yet.",
+				"wins":         totalWins,
+				"losses":       totalLosses,
+				"draws":        totalDraws,
+				"win_rate":     winRate,
 			})
 		})
 	}

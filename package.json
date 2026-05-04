@@ -1,0 +1,12 @@
+{
+  "name": "elemental-duel-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "newman": "^6.2.2"
+  }
+}
