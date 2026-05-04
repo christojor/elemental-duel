@@ -24,6 +24,10 @@ Desktop.ini
 !.env.example
 !.env.sample
 
+# Kubernetes secrets with real credentials (use k8s/aws-credentials.example.yml as template)
+k8s/aws-credentials.yml
+k8s-aws/aws-credentials.yml
+
 # -----------------------------
 # Logs
 # -----------------------------
