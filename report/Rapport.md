@@ -3,10 +3,12 @@
 ## 1. Inledning och syfte
 Detta projekt genomfördes inom kursen Cloud Native Computing (Inlämningsuppgift 2) med målet att bygga, testa och driftsätta en molnnativ applikation med CI/CD till Kubernetes.
 
-Lösningen består av tre delar:
-1. Ett spel-API i Go (Battle API) med MySQL som databas.
-2. Ett kompletterande CRUD-API i Python (Analytics API) med en annan databas (SQLite).
-3. En frontend i Python/Flask som konsumerar API:erna.
+Lösningen levererar **Elemental Duel** — ett spelaplikation baserat på en ökare-slagsmåls-variant med fem element (eld, vatten, jord, luft och blixt) där spelaren duellerar mot datorn. Varje element slår exakt två andra element och förlorar mot två andra, vilket skapar en symmetrisk och välbalanserad spelmekanik.
+
+Lösningen består av tre mikrotjänster:
+1. Ett spel-API i Go (Battle API) med MySQL som databas för att lagra spelrundor.
+2. Ett kompletterande CRUD-API i Python (Analytics API) med en separat databas (SQLite) för att samla statistik-snapshots.
+3. En frontend i Python/Flask som konsumerar API:erna och presenterar spelets användargränssnitt.
 
 Arkitekturen, lokala körinstruktioner och tekniska detaljer finns sammanfattade i README (se `README.md`). Denna rapport fokuserar på lösningens tekniska utformning, drift och verifiering.
 
@@ -14,22 +16,33 @@ Arkitekturen, lokala körinstruktioner och tekniska detaljer finns sammanfattade
 Applikationen är uppdelad i tre mikrotjänster:
 
 - **Battle API (Go + Gin + GORM)**
-  - Ansvarar för spelrundor och statistik.
-  - Lagrar spelomgångar i MySQL.
-  - Exponerar endpointar för health, rundor och statistik.
+  - Ansvarar för spelrundor och statistik
+  - Lagrar spelomgångar i MySQL
+  - Exponerar endpointar för health, rundor och statistik
 
 - **Analytics API (Python + Flask-RESTX + SQLAlchemy)**
-  - Hämtar statistik från Battle API och sparar snapshots.
-  - Exponerar full CRUD för snapshots.
-  - Dokumenteras med surfbar Swagger på `/docs`.
-  - Lagrar data i SQLite som separat analysdatabas.
+  - Hämtar statistik från Battle API och sparar snapshots
+  - Exponerar full CRUD för snapshots
+  - Dokumenteras med surfbar Swagger på `/docs`
+  - Lagrar data i SQLite som separat analysdatabas
 
 - **Frontend (Python + Flask + Jinja2)**
-  - Visar spelläge, resultat och statistik.
-  - Anropar Battle API för att spela rundor.
-  - Anropar Analytics API för sammanställning.
+  - Visar spelomgång, resultat och statistik
+  - Anropar Battle API för att spela rundor
+  - Anropar Analytics API för sammanställning
 
 I Kubernetes körs dessa som separata Deployments/Services med tillhörande konfiguration i manifests under respektive tjänsts `k8s`-katalog.
+
+### 2.1 Tjänstkommunikation och resiliens
+Tjänsterna kommunicerar via synkrona HTTP-anrop:
+- Frontend anropar Battle API för att spela en rund
+- Frontend anropar Analytics API för statistik
+- Analytics API anropar i sin tur Battle API för att hämta aktuell spelstatistik
+
+Lösningen implementerar graceful degradation för redundans:
+- Slaget API fungerar utan databasanslutning (rundor sparas inte men slaget körs)
+- Frontend hanterar timeouts mot Analytics API med ett fallback-värde
+- Tjänsterna lokaliseras via miljövariabler (BATTLE_API_URL, ANALYTICS_API_URL) vilket gör systemen portabla mellan lokal Docker Compose och Kubernetes
 
 Fördjupning och exakta kommandon finns i `README.md`.
 
@@ -62,53 +75,35 @@ Lösningen är körbar lokalt i Kubernetes med manifests i:
 
 Frontend är konfigurerad för lokal åtkomst via ClusterIP + port-forward. Exakta steg och kommandon finns i README.
 
-### 4.2 AWS/EKS-overlay
-För molnkluster finns separat overlay i `k8s-aws/` (bl.a. StorageClass/LoadBalancer-anpassning). Detta höll lokal setup och cloud setup tydligt separerade.
+### 4.2 AWS EKS för molnklustring
+Lösningen är framtagen för deployment på AWS EKS (Elastic Kubernetes Service). En separat overlay finns i `k8s-aws/` med anpassningar för molnmiljön (StorageClass: `gp2`, frontend Service: `LoadBalancer`). Detta höll lokal setup och cloud setup tydligt separerade.
 
 ### 4.3 Datapersistens och backup
-- MySQL och SQLite använder persistent storage i Kubernetes.
-- Backup till S3 sker via schemalagda CronJobs.
-- S3-hemligheter hålls utanför versionshantering via template + gitignore (se README).
+- MySQL och SQLite använder persistent storage i Kubernetes
+- Automatiska backups till AWS S3 (Simple Storage Service) sker via schemalagda CronJobs — både MySQL-dump och SQLite-fil lagras i objektlagring
+- S3-autentiseringsuppgifter hålls utanför versionshantering via template + gitignore (se README)
 
 ## 5. Teststrategi och kvalitet
 Projektet använder en testpyramid:
-- **Unit tests** för Go och Python-tjänster.
-- **Integrationstester** för samspel mellan tjänster.
-- **API-tester** med Postman/Newman.
-- **E2E-tester** med Playwright (desktop + mobil layout).
+- **Unit tests** för Go och Python-tjänster
+- **Integrationstester** för samspel mellan tjänster
+- **API-tester** med Postman/Newman
+- **E2E-tester** med Playwright (desktop + mobil layout)
 
 Resultatet är att både intern logik och verkliga användarflöden verifieras.
 
 ## 6. Dokumentation och reproducerbarhet
 README fungerar som operativ manual och innehåller:
-- arkitektursammanfattning,
-- steg-för-steg för lokal körning (Docker Compose och Kubernetes),
-- API-översikt,
-- testöversikt,
-- CI/CD-beskrivning.
+- Arkitektursammanfattning
+- Steg-för-steg för lokal körning (Docker Compose och Kubernetes)
+- API-översikt
+- Testöversikt
+- CI/CD-beskrivning
 
 Se `README.md` för exakta kommandon, portar, endpointar och felsökningsnära information.
 
-## 7. Skärmdumpsbilagor (lämnas separat)
-Följande skärmdumpar hänvisas till i inlämningen och bifogas separat tillsammans med rapporten:
-
-1. **Bilaga A - Kubernetes pods i Running**
-   - Exempel: `kubectl get pods -n elemental-duel`
-
-2. **Bilaga B - Frontend i webbläsare**
-   - Spelrunda genomförd och resultat visat.
-
-3. **Bilaga C - Analytics Swagger**
-   - `/docs` öppnad och CRUD-endpointar synliga.
-
-4. **Bilaga D - CI pipeline lyckad i GitHub Actions**
-   - Samtliga relevanta jobb gröna.
-
-5. **Bilaga E - Container images i registry**
-   - Battle, Analytics, Frontend publicerade.
-
-6. **Bilaga F - S3-backup artefakter**
-   - Uppladdade backupfiler från CronJobs.
+## 7. Skärmdumpsbilagor
+Skärmdumpar som illustrerar deployed Kubernetes cluster och pods lämnas separat vid sidan om repo och rapport.
 
 ## 8. Slutsats
 Projektet levererar en komplett cloud native-lösning med separerade tjänster, databaspersistens, testautomatisering och reproducerbar drift i både lokal miljö och Kubernetes.
