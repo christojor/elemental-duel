@@ -3,7 +3,7 @@
 ## 1. Inledning och syfte
 Detta projekt genomfördes inom kursen Cloud Native Computing (Inlämningsuppgift 2) med målet att bygga, testa och driftsätta en molnnativ applikation med CI/CD till Kubernetes.
 
-Lösningen levererar **Elemental Duel** — ett spelaplikation baserat på en ökare-slagsmåls-variant med fem element (eld, vatten, jord, luft och blixt) där spelaren duellerar mot datorn. Varje element slår exakt två andra element och förlorar mot två andra, vilket skapar en symmetrisk och välbalanserad spelmekanik.
+Lösningen levererar **Elemental Duel** — en spelapplikation baserat på sten-sax-påse, men med ett uttökat regelverk med fem element (eld, vatten, jord, luft och blixt) där spelaren duellerar mot datorn. Varje element slår exakt två andra element och förlorar mot två andra, vilket skapar en symmetrisk och välbalanserad spelmekanik.
 
 Lösningen består av tre mikrotjänster:
 1. Ett spel-API i Go (Battle API) med MySQL som databas för att lagra spelrundor.
@@ -40,7 +40,7 @@ Tjänsterna kommunicerar via synkrona HTTP-anrop:
 - Analytics API anropar i sin tur Battle API för att hämta aktuell spelstatistik
 
 Lösningen implementerar graceful degradation för redundans:
-- Slaget API fungerar utan databasanslutning (rundor sparas inte men slaget körs)
+- Battle API fungerar utan databasanslutning (rundor sparas inte men stridsrundan spelas)
 - Frontend hanterar timeouts mot Analytics API med ett fallback-värde
 - Tjänsterna lokaliseras via miljövariabler (BATTLE_API_URL, ANALYTICS_API_URL) vilket gör systemen portabla mellan lokal Docker Compose och Kubernetes
 
